@@ -9,12 +9,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.UnsupportedEncodingException;
+import java.io.*;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.URLDecoder;
+import java.nio.file.Files;
 import java.util.*;
 
 import static com.motorfans.util.RegexUtil.matchFirst;
@@ -33,7 +32,11 @@ public class YoutubeDownload {
     //默认请求头
     private static final String DEFAULT_HEADER = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Safari/537.36";
     //文件路径
-    private static final String FILE_PATH = Context.getContext().getProp(Context.VIDEO_STORE_PATH);
+    private static final String FILE_PATH = Context.getProp(Context.VIDEO_STORE_PATH);
+    //视频合并超时时间
+    private static int MERGE_TIMEOUT = Integer.parseInt(Context.getProp(Context.VIDEO_MERGE_TIMEOUT));
+    //代理
+    private static Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress("127.0.0.1", 1080));
     //日志
     private Logger logger = LoggerFactory.getLogger(this.getClass());
 
@@ -47,17 +50,30 @@ public class YoutubeDownload {
         if(urls.length != 2) {
             logger.error("链接缺失, videoId={}, linkNum={}", videoId, urls.length);
         }
-        String videoUrl = urls[0];
-        String audioUrl = urls[1];
         File rawVideoFile = makeFile(rawPathPrefix + ".mp4");
         File rawAudioFile = makeFile(rawPathPrefix + ".m4a");
         //确保本地ss端口1080且全局代理开启
-        Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress("127.0.0.1", 1080));
+        String videoUrl = urls[0];
+        String audioUrl = urls[1];
         String videoPath = downloadFile(videoUrl, rawVideoFile, proxy).getPath();
         String audioPath = downloadFile(audioUrl, rawAudioFile, proxy).getPath();
-        mergeByPath(videoPath, audioPath, cookedPath);
-        rawVideoFile.delete();
-        rawAudioFile.delete();
+        //合并文件
+        try {
+            mergeByPath(videoPath, audioPath, cookedPath);
+            int interval = 200;
+            while (new File(cookedPath).length() == 0) {
+                Thread.sleep(interval);
+                MERGE_TIMEOUT -= interval;
+                if(MERGE_TIMEOUT < 0) {
+                    throw new IllegalArgumentException("视音频合并超时20s");
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            rawVideoFile.delete();
+            rawAudioFile.delete();
+        }
     }
 
     /**
@@ -175,25 +191,9 @@ public class YoutubeDownload {
     }
 
 
-
-
     @Test
-    public void testFetcher() throws Exception {
-        getUrl("_eQLFVpOYm4");
-    }
-
-    @Test
-    public void testDownloader() {
-        String url = "https://r3---sn-a5m7lnlz.googlevideo.com/videoplayback?mm=31,26&ei=5du5W7WLC4alkgaC3IrwBw&requiressl=yes&signature=954F112F5DE9D040349E0C2068AB392E52D71469.A6AB7A7FF946166E58079AF8DD82C55B396243E7&itag=135&keepalive=yes&expire=1538928709&gir=yes&mn=sn-a5m7lnlz,sn-q4fl6ner&ip=74.82.212.70&key=yt6&mv=m&mt=1538906988&sparams=aitags,clen,dur,ei,gir,id,initcwndbps,ip,ipbits,itag,keepalive,lmt,mime,mm,mn,ms,mv,pl,requiressl,source,expire&fvip=3&ms=au,onr&aitags=133,134,135,136,137,160,242,243,244,247,248,278&pl=20&id=o-ABLdWICsVWqj3xFePxQE7edUjQlUL5xDN6AgjwuWllvd&mime=video/mp4&c=WEB&lmt=1537767165016455&ipbits=0&initcwndbps=2803750&source=youtube&clen=6063681&dur=141.866";
-        url = "https://r3---sn-a5mekner.googlevideo.com/videoplayback?expire=1538934064&lmt=1537766452155481&fvip=3&c=WEB&dur=141.920&clen=2254753&mm=31,26&mn=sn-a5mekner,sn-q4fl6ner&id=o-ALZLCLqu_h93aAgcdDmt-3VxdSf0Hq285TG-LyhD_t75&ip=74.82.212.70&ipbits=0&mv=m&pl=20&ei=0PC5W-GcKsa6kwbnmJTADg&source=youtube&signature=08E6D4C956DF30A01CD735C37B12A1CC1106D0A3.C00BF07214009AFC0BC37C687BA421A14CE97086&sparams=clen,dur,ei,gir,id,initcwndbps,ip,ipbits,itag,keepalive,lmt,mime,mm,mn,ms,mv,pl,requiressl,source,expire&keepalive=yes&mt=1538912325&itag=140&gir=yes&mime=audio/mp4&key=yt6&initcwndbps=2251250&ms=au,onr&requiressl=yes";
-        File file = makeFile(FILE_PATH + "/" + "ak47.m4a");
-        //确保本地ss端口1080且全局代理开启
-        Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress("127.0.0.1", 1080));
-        downloadFile(url, file, proxy);
-    }
-
-    @Test
-    public void testProcess() {
+    //https://www.youtube.com/watch?v=_eQLFVpOYm4
+    public void testProcess() throws FileNotFoundException {
         downloadVideo("_eQLFVpOYm4");
     }
 

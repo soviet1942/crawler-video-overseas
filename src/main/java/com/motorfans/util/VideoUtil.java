@@ -1,5 +1,7 @@
 package com.motorfans.util;
 
+import org.jsoup.Jsoup;
+
 import java.io.*;
 import java.net.*;
 
@@ -19,6 +21,11 @@ public class VideoUtil {
     public static boolean mergeByPath(String inputVideoFilePath, String inputAudioFilePath, String outputFilePath) {
         String[] exeCmd = new String[]{"ffmpeg", "-i", inputAudioFilePath, "-i", inputVideoFilePath,
                 "-acodec", "copy", "-vcodec", "copy", outputFilePath};
+        Validate.isTrue(new File(inputVideoFilePath).exists(), "invalid video file path: " + inputVideoFilePath);
+        Validate.isTrue(new File(inputAudioFilePath).exists(), "invalid audio file path: " + inputAudioFilePath);
+        if(!new File(outputFilePath).exists()) {
+            makeFile(outputFilePath);
+        }
         ProcessBuilder pb = new ProcessBuilder(exeCmd);
         pb.redirectErrorStream(true);
         try {
@@ -30,8 +37,8 @@ public class VideoUtil {
     }
 
     /**
-     * 执行命令行进行合并
-     * @param cmd ffmpeg -i ./audio_input.m4a -i ./video_input.mp4 -acodec copy -vcodec copy outputFile.mp4
+     * 执行命令行
+     * @param cmd
      * @return
      */
     public static boolean executeCmd(String cmd) {
@@ -56,48 +63,48 @@ public class VideoUtil {
     public static File downloadFile(String urlStr, File outputFile) {
         return downloadFile(urlStr, outputFile, null);
     }
+
     public static File downloadFile(String urlStr, File outputFile, Proxy proxy) {
         try {
+            System.out.println("downloading url: " + urlStr);
             URL url = new URL(urlStr);
             HttpURLConnection conn = (HttpURLConnection)url.openConnection(proxy);
             conn.setConnectTimeout(3000);
             conn.setRequestProperty("User-Agent", "Mozilla/4.0 (compatible; MSIE 5.0; Windows NT; DigExt)");
             InputStream inputStream = conn.getInputStream();
-            writeFile(inputStream, outputFile);
+            //写文件
+            FileOutputStream fileOutputStream = new FileOutputStream(outputFile);
+            byte[] buffer = new byte[512000];
+            int len = 0;
+            int size = 0;
+            int total = conn.getContentLength();
+            int progress = 0;
+            while ((len = inputStream.read(buffer)) != -1) {
+                fileOutputStream.write(buffer, 0, len);
+                size += len;
+                int current = size*100/total;
+                if(current != progress) {
+                    System.out.println("progress->:" + current + "%" + " size:" + size + " total:" + total);
+                    progress = current;
+                }
+            }
+            fileOutputStream.close();
         } catch (IOException e) {
             e.printStackTrace();
         }
         return outputFile;
     }
 
-    /**
-     *  写文件
-     * @param inputStream
-     * @param outputFile
-     */
-    public static void writeFile(InputStream inputStream, File outputFile) {
-        FileOutputStream fileOutputStream = null;
-        try {
-            fileOutputStream = new FileOutputStream(outputFile);
-            byte[] buffer = new byte[4096];
-            int len = 0;
-            while ((len = inputStream.read(buffer)) != -1) {
-                fileOutputStream.write(buffer, 0, len);
-            }
-            fileOutputStream.close();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
 
     public static File makeFile(String filePath) {
-        int lastIndex = filePath.lastIndexOf("/");
-        String dirPath = filePath.substring(0, lastIndex);
-        File dirFile = new File(dirPath);
-        if(! dirFile.exists()) {
-            dirFile.mkdirs();
-        }
         File file = new File(filePath);
+        if(!file.exists()) {
+            if(file.isDirectory()) {
+                file.mkdirs();
+            } else {
+                file.getParentFile().mkdirs();
+            }
+        }
         return file;
     }
 
